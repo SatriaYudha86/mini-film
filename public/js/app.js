@@ -253,7 +253,8 @@ function openSeries(series, cardEl) {
       <span class="ep-meta">${[dur, fmtSize(ep.size)].filter(Boolean).join(' · ')}</span>
       <span class="ep-play">▶</span>`;
     li.addEventListener('click', () =>
-      play({ id: ep.id, title: `${series.title} — ${ep.title}` }));
+      play({ id: ep.id, title: `${series.title} — ${ep.title}` },
+           { episodes: series.episodes, index: i, seriesTitle: series.title }));
     list.appendChild(li);
   });
   $('#series-modal').classList.remove('hidden');
@@ -333,19 +334,50 @@ function refreshPoster(el) {
 }
 
 // ---------- Player ----------
-function play(m) {
+// Konteks pemutaran series: { episodes, index, seriesTitle }. null = film satuan.
+let playCtx = null;
+
+function play(m, ctx = null) {
+  playCtx = ctx;
   const modal = $('#player-modal');
   const video = $('#player');
   video.src = `/api/stream/${m.id}`;
   $('#player-title').textContent = m.title + (m.year ? ` (${m.year})` : '');
+  updatePlayerNav();
   modal.classList.remove('hidden');
   video.play().catch(() => {});
 }
+
+// Putar episode ke-i dari series yang sedang dibuka.
+function playEpisodeAt(i) {
+  if (!playCtx) return;
+  const eps = playCtx.episodes;
+  if (i < 0 || i >= eps.length) return;
+  playCtx.index = i;
+  const ep = eps[i];
+  play({ id: ep.id, title: `${playCtx.seriesTitle} — ${ep.title}` }, playCtx);
+}
+
+function updatePlayerNav() {
+  const nav = $('#player-nav');
+  if (!playCtx) { nav.classList.add('hidden'); return; }
+  const { episodes, index } = playCtx;
+  nav.classList.remove('hidden');
+  $('#prev-ep').disabled = index <= 0;
+  $('#next-ep').disabled = index >= episodes.length - 1;
+  $('#ep-indicator').textContent = `Episode ${index + 1} dari ${episodes.length}`;
+}
+
+$('#prev-ep').addEventListener('click', () => playEpisodeAt(playCtx ? playCtx.index - 1 : 0));
+$('#next-ep').addEventListener('click', () => playEpisodeAt(playCtx ? playCtx.index + 1 : 0));
+
 function closePlayer() {
   const video = $('#player');
   video.pause();
   video.removeAttribute('src');
   video.load();
+  playCtx = null;
+  $('#player-nav').classList.add('hidden');
   $('#player-modal').classList.add('hidden');
 }
 $('#player-close').addEventListener('click', closePlayer);

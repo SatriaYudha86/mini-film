@@ -336,6 +336,23 @@ input:focus {
 .modal h3 {
   margin: 16px 4px 0; font-weight: 700; font-size: 18px;
 }
+.player-nav {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 14px; margin: 14px 4px 0;
+}
+.player-nav button { min-width: 150px; }
+.player-nav button:disabled {
+  opacity: .35; cursor: not-allowed;
+  background: rgba(120,170,255,.04); border-color: var(--border);
+}
+.player-nav button:disabled:hover { background: rgba(120,170,255,.04); border-color: var(--border); }
+#ep-indicator { font-size: 13px; white-space: nowrap; }
+
+@media (max-width: 560px) {
+  .player-nav button { min-width: 0; flex: 1; padding: 10px 8px; font-size: 13px; }
+  #ep-indicator { display: none; }
+}
+
 .modal-close {
   position: absolute; top: -16px; right: -16px;
   width: 42px; height: 42px; padding: 0; font-size: 18px; border-radius: 50%;
