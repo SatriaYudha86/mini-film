@@ -149,7 +149,10 @@ app.get('/api/thumbnail/:id', requireAuth, async (req, res) => {
     res.status(404).sendFile(path.join(__dirname, 'public', 'placeholder.svg'));
     return;
   }
-  res.setHeader('Cache-Control', 'public, max-age=86400');
+  // "no-cache" = browser boleh menyimpan, tapi WAJIB revalidasi dulu.
+  // sendFile mengirim ETag + Last-Modified, jadi kalau poster tidak berubah
+  // balasannya 304 (hemat), dan kalau diganti user langsung tampil baru.
+  res.setHeader('Cache-Control', 'no-cache');
   res.sendFile(thumb.file);
 });
 
