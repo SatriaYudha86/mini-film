@@ -1,5 +1,6 @@
 import express from 'express';
 import path from 'node:path';
+import os from 'node:os';
 import { promises as fs } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
@@ -17,7 +18,18 @@ import {
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT || 3000;
+const HOST = process.env.HOST || '0.0.0.0'; // 0.0.0.0 = bisa diakses dari LAN
 const app = express();
+
+// Cari IP LAN untuk ditampilkan di log
+function lanAddress() {
+  for (const iface of Object.values(os.networkInterfaces())) {
+    for (const net of iface || []) {
+      if (net.family === 'IPv4' && !net.internal) return net.address;
+    }
+  }
+  return null;
+}
 
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
@@ -180,8 +192,12 @@ app.get('/api/stream/:id', requireAuth, async (req, res) => {
 const server = await (async () => {
   await ensureDataDir();
   await loadConfig();
-  const s = app.listen(PORT, () => {
-    console.log(`\n🎬  Mini-Stream berjalan di http://localhost:${PORT}\n`);
+  const s = app.listen(PORT, HOST, () => {
+    const lan = lanAddress();
+    console.log(`\n🎬  Mini-Stream berjalan (bind ${HOST}:${PORT})`);
+    console.log(`    • Lokal   : http://localhost:${PORT}`);
+    if (lan) console.log(`    • Jaringan: http://${lan}:${PORT}`);
+    console.log('');
   });
   // Hitung durasi di background (tidak memblok startup).
   warmDurations().catch(() => {});

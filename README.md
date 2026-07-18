@@ -1,7 +1,5 @@
 # 🎬 Mini-Stream
 
-**🌐 Language:** **English** · [Bahasa Indonesia](README.id.md)
-
 A **self-hosted** movie streaming server (a mini Jellyfin) built with Node.js. It
 shows your MP4 collection from folders on the server as a poster grid, and plays
 them straight in the browser with seeking support (HTTP Range streaming). No
@@ -77,6 +75,40 @@ npm run dev
 1. Open `http://localhost:3000` → **create a password** (once, min. 4 characters).
 2. Go to the **Settings** tab → add a movie folder (type a path or click **Browse…**).
 3. Open the **Movies** tab and start watching. Click ⋮ on a poster to change its thumbnail.
+
+---
+
+## 🔁 Run as a service (systemd)
+
+To keep Mini-Stream running in the background and start on boot, use the included
+[`mini-stream.service`](mini-stream.service) unit file.
+
+```bash
+# 1. Edit User, Group, WorkingDirectory, ExecStart (node path) & ReadWritePaths
+#    in mini-stream.service to match your system:
+which node          # path for ExecStart
+whoami              # User / Group
+
+# 2. Install the unit file
+sudo cp mini-stream.service /etc/systemd/system/mini-stream.service
+
+# 3. Reload systemd & enable at boot
+sudo systemctl daemon-reload
+sudo systemctl enable --now mini-stream
+
+# 4. Check status & logs
+systemctl status mini-stream
+journalctl -u mini-stream -f          # live logs
+
+# Common commands
+sudo systemctl restart mini-stream    # after code changes
+sudo systemctl stop mini-stream
+sudo systemctl disable mini-stream    # don't start on boot
+```
+
+> ⚠️ Run `npm install` **before** enabling the service (dependencies must exist).
+> If your movie folders live outside the user's home, the `ProtectHome=read-only`
+> line may block reading — set it to `false` or add the paths to `ReadOnlyPaths=`.
 
 ---
 

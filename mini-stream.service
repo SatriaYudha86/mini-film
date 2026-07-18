@@ -1,0 +1,41 @@
+[Unit]
+Description=Mini-Stream - self-hosted MP4 movie streaming
+Documentation=https://github.com/SatriaYudha86/mini-film
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+
+# --- Sesuaikan 3 baris ini dengan sistemmu ---
+User=unknown
+Group=unknown
+WorkingDirectory=/home/unknown/project/streaming
+
+# Jalankan server (pakai path absolut ke node)
+ExecStart=/usr/bin/node server.js
+
+# Host & port (HOST=0.0.0.0 = bisa diakses dari jaringan/LAN)
+Environment=HOST=0.0.0.0
+Environment=PORT=3000
+Environment=NODE_ENV=production
+
+# Restart otomatis bila crash
+Restart=on-failure
+RestartSec=5
+
+# Log ke journald
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=mini-stream
+
+# --- Hardening dasar ---
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=read-only
+# data/ perlu bisa ditulis (config, cache poster/durasi):
+ReadWritePaths=/home/unknown/project/streaming/data
+
+[Install]
+WantedBy=multi-user.target
