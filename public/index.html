@@ -98,7 +98,29 @@
   <div id="player-modal" class="modal hidden">
     <div class="modal-inner">
       <button id="player-close" class="modal-close">✕</button>
-      <video id="player" controls autoplay playsinline></video>
+      <div class="video-wrap">
+        <video id="player" controls autoplay playsinline></video>
+        <div id="player-osd" class="player-osd"></div>
+        <div id="shortcut-help" class="shortcut-help hidden">
+          <h4>Pintasan Keyboard</h4>
+          <ul>
+            <li><kbd>Space</kbd> / <kbd>K</kbd><span>Play / Pause</span></li>
+            <li><kbd>J</kbd> / <kbd>L</kbd><span>Mundur / maju 10 detik</span></li>
+            <li><kbd>←</kbd> / <kbd>→</kbd><span>Mundur / maju 5 detik</span></li>
+            <li><kbd>↑</kbd> / <kbd>↓</kbd><span>Volume +/- 5%</span></li>
+            <li><kbd>M</kbd><span>Bisukan / bunyikan</span></li>
+            <li><kbd>F</kbd><span>Layar penuh</span></li>
+            <li><kbd>I</kbd><span>Picture-in-Picture</span></li>
+            <li><kbd>0</kbd>–<kbd>9</kbd><span>Lompat ke 0%–90%</span></li>
+            <li><kbd>Home</kbd> / <kbd>End</kbd><span>Awal / akhir video</span></li>
+            <li><kbd>,</kbd> / <kbd>.</kbd><span>Mundur / maju 1 frame (saat jeda)</span></li>
+            <li><kbd>&lt;</kbd> / <kbd>&gt;</kbd><span>Perlambat / percepat</span></li>
+            <li><kbd>Shift</kbd>+<kbd>P</kbd> / <kbd>N</kbd><span>Episode sebelumnya / berikutnya</span></li>
+            <li><kbd>?</kbd><span>Tampilkan bantuan ini</span></li>
+            <li><kbd>Esc</kbd><span>Tutup</span></li>
+          </ul>
+        </div>
+      </div>
       <h3 id="player-title"></h3>
       <div id="player-nav" class="player-nav hidden">
         <button id="prev-ep" class="ghost">⏮ Sebelumnya</button>

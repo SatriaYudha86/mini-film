@@ -378,14 +378,127 @@ function closePlayer() {
   video.load();
   playCtx = null;
   $('#player-nav').classList.add('hidden');
+  $('#shortcut-help').classList.add('hidden');
   $('#player-modal').classList.add('hidden');
 }
 $('#player-close').addEventListener('click', closePlayer);
 $('#player-modal').addEventListener('click', (e) => {
   if (e.target.id === 'player-modal') closePlayer();
 });
+// ---------- Pintasan keyboard (ala YouTube) ----------
+const RATES = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
+let osdTimer = null;
+
+function isPlayerOpen() { return !$('#player-modal').classList.contains('hidden'); }
+function isSeriesOpen() { return !$('#series-modal').classList.contains('hidden'); }
+function isTyping(el) {
+  return el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable);
+}
+
+// Tampilkan info singkat di atas video (volume, kecepatan, dsb).
+function osd(text) {
+  const el = $('#player-osd');
+  el.textContent = text;
+  el.classList.add('show');
+  clearTimeout(osdTimer);
+  osdTimer = setTimeout(() => el.classList.remove('show'), 900);
+}
+
+function seekBy(sec) {
+  const v = $('#player');
+  if (!Number.isFinite(v.duration)) return;
+  v.currentTime = Math.min(Math.max(v.currentTime + sec, 0), v.duration);
+  osd((sec > 0 ? '⏩ +' : '⏪ ') + Math.abs(sec) + 's');
+}
+function setVolume(delta) {
+  const v = $('#player');
+  v.volume = Math.min(Math.max(v.volume + delta, 0), 1);
+  if (v.volume > 0) v.muted = false;
+  osd('🔊 ' + Math.round(v.volume * 100) + '%');
+}
+function stepFrame(dir) {
+  const v = $('#player');
+  v.pause();
+  if (!Number.isFinite(v.duration)) return;
+  v.currentTime = Math.min(Math.max(v.currentTime + dir / 30, 0), v.duration);
+  osd(dir > 0 ? '▶| frame' : '|◀ frame');
+}
+function changeRate(dir) {
+  const v = $('#player');
+  const i = RATES.indexOf(v.playbackRate);
+  const next = RATES[Math.min(Math.max((i < 0 ? 3 : i) + dir, 0), RATES.length - 1)];
+  v.playbackRate = next;
+  osd(next + '×');
+}
+function toggleFullscreen() {
+  const v = $('#player');
+  if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+  else v.requestFullscreen?.().catch(() => {});
+}
+async function togglePiP() {
+  const v = $('#player');
+  try {
+    if (document.pictureInPictureElement) await document.exitPictureInPicture();
+    else if (document.pictureInPictureEnabled) await v.requestPictureInPicture();
+  } catch { osd('PiP tidak tersedia'); }
+}
+function toggleHelp(force) {
+  const el = $('#shortcut-help');
+  if (force === undefined) el.classList.toggle('hidden');
+  else el.classList.toggle('hidden', !force);
+}
+
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape' && !$('#player-modal').classList.contains('hidden')) closePlayer();
+  if (isTyping(e.target) || e.ctrlKey || e.altKey || e.metaKey) return;
+  const key = e.key;
+  const lower = typeof key === 'string' ? key.toLowerCase() : '';
+
+  // "/" fokus ke pencarian (hanya di grid, saat player tertutup)
+  if (key === '/' && !isPlayerOpen()) {
+    e.preventDefault();
+    $('#search').focus();
+    return;
+  }
+
+  if (key === 'Escape') {
+    if (!$('#shortcut-help').classList.contains('hidden')) toggleHelp(false);
+    else if (isPlayerOpen()) closePlayer();
+    else if (isSeriesOpen()) closeSeries();
+    return;
+  }
+
+  if (!isPlayerOpen()) return;
+  const v = $('#player');
+
+  if (key === ' ' || lower === 'k') {
+    e.preventDefault();
+    if (v.paused) { v.play().catch(() => {}); osd('▶'); } else { v.pause(); osd('⏸'); }
+  } else if (lower === 'm') {
+    v.muted = !v.muted;
+    osd(v.muted ? '🔇 Bisu' : '🔊 ' + Math.round(v.volume * 100) + '%');
+  } else if (lower === 'j') { seekBy(-10); }
+  else if (lower === 'l') { seekBy(10); }
+  else if (key === 'ArrowLeft') { e.preventDefault(); seekBy(-5); }
+  else if (key === 'ArrowRight') { e.preventDefault(); seekBy(5); }
+  else if (key === 'ArrowUp') { e.preventDefault(); setVolume(0.05); }
+  else if (key === 'ArrowDown') { e.preventDefault(); setVolume(-0.05); }
+  else if (key === 'Home') { v.currentTime = 0; osd('⏮ Awal'); }
+  else if (key === 'End') { if (Number.isFinite(v.duration)) v.currentTime = v.duration; }
+  else if (/^[0-9]$/.test(key)) {
+    if (Number.isFinite(v.duration)) {
+      v.currentTime = v.duration * (Number(key) / 10);
+      osd(Number(key) * 10 + '%');
+    }
+  }
+  else if (key === ',') { stepFrame(-1); }
+  else if (key === '.') { stepFrame(1); }
+  else if (key === '<') { changeRate(-1); }
+  else if (key === '>') { changeRate(1); }
+  else if (lower === 'f') { toggleFullscreen(); }
+  else if (lower === 'i') { togglePiP(); }
+  else if (lower === 'n' && e.shiftKey) { playEpisodeAt(playCtx ? playCtx.index + 1 : 0); }
+  else if (lower === 'p' && e.shiftKey) { playEpisodeAt(playCtx ? playCtx.index - 1 : 0); }
+  else if (key === '?') { toggleHelp(); }
 });
 
 // ---------- Libraries / Settings ----------
