@@ -339,19 +339,6 @@ input:focus {
 /* Wrapper video + overlay */
 .video-wrap { position: relative; }
 
-.player-osd {
-  position: absolute; top: 16px; left: 16px;
-  padding: 10px 16px; border-radius: 10px;
-  background: rgba(4,10,22,.82);
-  backdrop-filter: blur(8px);
-  border: 1px solid var(--border-strong);
-  font-size: 16px; font-weight: 700; color: #dff4ff;
-  opacity: 0; transform: translateY(-6px);
-  transition: opacity .15s, transform .15s;
-  pointer-events: none;
-}
-.player-osd.show { opacity: 1; transform: none; }
-
 .shortcut-help {
   position: absolute; inset: 0;
   display: flex; flex-direction: column;
