@@ -119,7 +119,7 @@ async function loadMovies() {
     applyView();
   } catch (e) {
     $("#hero").classList.add("hidden");
-    grid.innerHTML = `<p class="error">Failed to load: ${e.message}</p>`;
+    grid.innerHTML = `<p class="error">Failed to load: ${escapeHtml(e.message)}</p>`;
   }
 }
 
@@ -687,5 +687,5 @@ function escapeHtml(s) {
 }
 
 boot().catch((e) => {
-  document.body.innerHTML = `<div class="screen center"><p class="error">Error: ${e.message}</p></div>`;
+  document.body.innerHTML = `<div class="screen center"><p class="error">Error: ${escapeHtml(e.message)}</p></div>`;
 });

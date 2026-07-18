@@ -31,6 +31,10 @@ export function metaCachePath() {
   return path.join(DATA_DIR, 'meta-cache.json');
 }
 
+export function sessionsPath() {
+  return path.join(DATA_DIR, 'sessions.json');
+}
+
 export async function loadConfig() {
   if (cache) return cache;
   try {

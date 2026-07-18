@@ -9,6 +9,7 @@ import {
   isConfigured, setupPassword, checkPassword,
   createSession, destroySession, getSessionToken, isValidSession,
   setSessionCookie, clearSessionCookie, requireAuth,
+  loadSessions, loginLockRemaining, recordFailedLogin, clearLoginAttempts,
 } from './src/auth.js';
 import {
   scanMovies, decodeId, assertInsideLibrary,
@@ -19,6 +20,7 @@ import {
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT || 3000;
 const HOST = process.env.HOST || '0.0.0.0'; // 0.0.0.0 = reachable from the LAN
+const MIN_PASSWORD = 8;
 const app = express();
 
 // Find the LAN IP to show in the startup log
@@ -45,8 +47,8 @@ app.get('/api/status', async (req, res) => {
 app.post('/api/setup', async (req, res) => {
   if (await isConfigured()) return res.status(400).json({ error: 'already set up' });
   const { password } = req.body || {};
-  if (!password || password.length < 4) {
-    return res.status(400).json({ error: 'password must be at least 4 characters' });
+  if (!password || password.length < MIN_PASSWORD) {
+    return res.status(400).json({ error: `password must be at least ${MIN_PASSWORD} characters` });
   }
   await setupPassword(password);
   const token = createSession();
@@ -56,10 +58,23 @@ app.post('/api/setup', async (req, res) => {
 
 app.post('/api/login', async (req, res) => {
   if (!(await isConfigured())) return res.status(400).json({ error: 'not set up yet' });
+
+  // Throttle brute-force attempts per client IP.
+  const ip = req.ip || req.socket.remoteAddress || 'unknown';
+  const lockedFor = loginLockRemaining(ip);
+  if (lockedFor > 0) {
+    res.setHeader('Retry-After', String(lockedFor));
+    return res.status(429).json({
+      error: `too many attempts — try again in ${Math.ceil(lockedFor / 60)} minute(s)`,
+    });
+  }
+
   const { password } = req.body || {};
   if (!(await checkPassword(password || ''))) {
+    recordFailedLogin(ip);
     return res.status(401).json({ error: 'wrong password' });
   }
+  clearLoginAttempts(ip);
   const token = createSession();
   setSessionCookie(res, token);
   res.json({ ok: true });
@@ -195,6 +210,7 @@ app.get('/api/stream/:id', requireAuth, async (req, res) => {
 const server = await (async () => {
   await ensureDataDir();
   await loadConfig();
+  await loadSessions(); // restore sign-ins from the previous run
   const s = app.listen(PORT, HOST, () => {
     const lan = lanAddress();
     console.log(`\n🎬  Mini-Stream berjalan (bind ${HOST}:${PORT})`);
