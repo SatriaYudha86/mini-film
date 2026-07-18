@@ -323,13 +323,17 @@ input:focus {
   position: fixed; inset: 0;
   background: rgba(4, 8, 18, .82);
   backdrop-filter: blur(10px);
-  display: flex; align-items: center; justify-content: center;
+  /* align-items:flex-start + margin:auto centres the box but still lets tall
+     content scroll instead of being clipped at the top. */
+  display: flex; align-items: flex-start; justify-content: center;
+  overflow-y: auto;
   z-index: 100; padding: 24px;
   animation: fade .2s ease;
 }
-.modal-inner { width: min(1120px, 100%); position: relative; }
+.modal-inner { width: min(1120px, 100%); position: relative; margin: auto; }
 .modal video {
-  width: 100%; border-radius: var(--radius); background: #000; max-height: 80vh;
+  /* leaves room for the title + episode nav below on short windows */
+  width: 100%; border-radius: var(--radius); background: #000; max-height: 68vh;
   border: 1px solid var(--border-strong);
   box-shadow: 0 30px 80px rgba(0,0,0,.6), 0 0 60px rgba(34,211,238,.20);
 }
@@ -389,10 +393,12 @@ kbd {
   #ep-indicator { display: none; }
 }
 
+/* Kept inside the box (not offset outside) so it can never fall off-screen. */
 .modal-close {
-  position: absolute; top: -16px; right: -16px;
+  position: absolute; top: 12px; right: 12px;
   width: 42px; height: 42px; padding: 0; font-size: 18px; border-radius: 50%;
   color: #04121f;
+  z-index: 8; /* above the video, overlays and the shortcut help panel */
 }
 
 /* ---------- Decorative orbs ---------- */
