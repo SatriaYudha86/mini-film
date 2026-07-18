@@ -432,10 +432,9 @@ function closePlayer() {
   $("#shortcut-help").classList.add("hidden");
   $("#player-modal").classList.add("hidden");
 }
+// Deliberately no click-outside-to-close here: a stray click while watching
+// should not stop playback. Close with the X button or Esc.
 $("#player-close").addEventListener("click", closePlayer);
-$("#player-modal").addEventListener("click", (e) => {
-  if (e.target.id === "player-modal") closePlayer();
-});
 // ---------- Keyboard shortcuts (YouTube-style) ----------
 const RATES = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
 
