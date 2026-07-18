@@ -10,7 +10,7 @@ const IMG_EXT = ['.jpg', '.jpeg', '.png', '.webp'];
 const SKIP_DIRS = new Set(['node_modules', '.git', '@eaDir', '.thumbnails']);
 
 // ---------- Path security ----------
-// id = base64url dari absolute path. Selalu divalidasi ulang thd libraries.
+// id = base64url of the absolute path. Always re-validated against the libraries.
 export function encodeId(absPath) {
   return Buffer.from(absPath).toString('base64url');
 }
@@ -22,7 +22,7 @@ export function decodeId(id) {
   }
 }
 
-// Pastikan target berada di dalam salah satu library root (cegah path traversal).
+// Ensure the target sits inside one of the library roots (prevents path traversal).
 export async function assertInsideLibrary(absPath) {
   const libs = await getLibraries();
   let real;
@@ -44,7 +44,7 @@ const TAG_RE = /\b(1080p|720p|2160p|480p|4k|x264|x265|h264|h265|hevc|bluray|blu-
 
 export function cleanTitle(filename) {
   let name = filename.replace(/\.[^.]+$/, '');
-  // Buang prefix situs (mis. "Lk21.De-", "D21.FUN-") & ID numerik panjang di akhir
+  // Strip site prefixes (e.g. "Lk21.De-", "D21.FUN-") and long trailing numeric IDs
   name = name.replace(/^[A-Za-z0-9]+\.[A-Za-z0-9]+-/, '');
   name = name.replace(/-\d{8,}$/, '');
   name = name.replace(/[._]/g, ' ');
@@ -81,9 +81,9 @@ async function walk(dir, root, out, depth = 0) {
   }
 }
 
-// Kembalikan daftar item: film satuan atau series (kumpulan episode).
-// Aturan: file langsung di root library = film. File di subfolder =
-// dikelompokkan per folder; >1 file jadi series, 1 file jadi film.
+// Return a list of items: standalone movies or series (groups of episodes).
+// Rule: a file directly in a library root is a movie. Files in a subfolder are
+// grouped per folder; >1 file becomes a series, a single file stays a movie.
 export async function scanMovies() {
   const libs = await getLibraries();
   const files = [];
@@ -92,7 +92,7 @@ export async function scanMovies() {
   }
   const meta = await loadMetaCache();
 
-  const singles = [];           // { full, root } langsung di root library
+  const singles = [];           // { full, root } directly in a library root
   const groups = new Map();     // parentDir -> { root, parent, files: [] }
   for (const { full, root } of files) {
     const parent = path.dirname(full);
@@ -159,7 +159,7 @@ async function buildSeries(folder, root, gfiles, meta) {
   return {
     type: 'series',
     id: encodeId(folder),
-    posterId: episodes[0].id,   // poster ambil dari episode pertama
+    posterId: episodes[0].id,   // poster taken from the first episode
     title,
     year,
     library: path.basename(root),
@@ -170,7 +170,7 @@ async function buildSeries(folder, root, gfiles, meta) {
   };
 }
 
-// Ekstrak season/episode dari nama file untuk urutan & label.
+// Extract season/episode from the filename for ordering and labels.
 function pad(n) { return String(n).padStart(2, '0'); }
 function parseEpisode(filename) {
   const name = filename.replace(/\.[^.]+$/, '');
@@ -183,11 +183,11 @@ function parseEpisode(filename) {
   if (m) {
     return { season: 1, episode: +m[1], label: `Episode ${pad(+m[1])}` };
   }
-  m = name.match(/(\d{1,3})(?!.*\d)/); // angka terakhir sebagai fallback
+  m = name.match(/(\d{1,3})(?!.*\d)/); // last number as a fallback
   return { season: 1, episode: m ? +m[1] : 0, label: name };
 }
 
-// ---------- Metadata cache (durasi) ----------
+// ---------- Metadata cache (durations) ----------
 let metaCache = null;
 function cacheKey(file, stat) {
   return crypto.createHash('md5').update(`${file}:${stat.size}:${stat.mtimeMs}`).digest('hex');
@@ -235,7 +235,7 @@ export async function getDuration(file) {
   return duration;
 }
 
-// Hitung durasi untuk semua film yang belum ter-cache (concurrency terbatas).
+// Compute durations for every uncached file (with limited concurrency).
 export async function warmDurations(concurrency = 3) {
   const libs = await getLibraries();
   const files = [];
@@ -277,13 +277,13 @@ function generateThumb(videoFile, outFile, seek) {
   });
 }
 
-// Poster kustom yang di-upload user (selalu .jpg, di-key dari path video).
+// User-uploaded custom poster (always .jpg, keyed by the video path).
 export function customPosterFile(videoFile) {
   const h = crypto.createHash('md5').update(videoFile).digest('hex');
   return path.join(customDir(), h + '.jpg');
 }
 
-// Simpan gambar upload jadi poster kustom (dinormalkan ke jpg via ffmpeg).
+// Save an uploaded image as the custom poster (normalised to jpg via ffmpeg).
 export async function saveCustomPoster(videoFile, buffer) {
   const out = customPosterFile(videoFile);
   const tmp = out + '.tmp';
@@ -294,7 +294,7 @@ export async function saveCustomPoster(videoFile, buffer) {
     p.on('error', () => resolve(false));
   });
   if (!ok) {
-    // Fallback: simpan mentah kalau ffmpeg gagal (mis. sudah jpg).
+    // Fallback: store the raw bytes if ffmpeg fails (e.g. already a jpg).
     await fs.copyFile(tmp, out).catch(() => {});
   }
   await fs.rm(tmp, { force: true }).catch(() => {});
@@ -305,7 +305,7 @@ export async function removeCustomPoster(videoFile) {
   await fs.rm(customPosterFile(videoFile), { force: true }).catch(() => {});
 }
 
-// Kembalikan path file gambar poster (kustom > lokal > generate & cache).
+// Return the poster image path (custom > local file > generated & cached).
 export async function getThumbnail(videoFile) {
   const custom = customPosterFile(videoFile);
   try { await fs.access(custom); return { file: custom, generated: true }; } catch { /* next */ }
@@ -320,16 +320,16 @@ export async function getThumbnail(videoFile) {
   try { await fs.access(outFile); return { file: outFile, generated: true }; } catch { /* generate */ }
 
   const duration = await getDuration(videoFile);
-  // seek ~20% durasi, tapi jangan pernah melewati akhir video (aman utk klip pendek)
+  // seek ~20% in, but never past the end of the video (safe for short clips)
   const seek = duration && duration > 0
     ? Math.min(duration * 0.2, Math.max(duration - 0.5, 0))
     : 3;
   const ok = await generateThumb(videoFile, outFile, seek);
-  // Pastikan file benar-benar terbuat & tidak kosong sebelum dipakai
+  // Make sure the file was actually created and is not empty before using it
   if (ok) {
     try {
       if ((await fs.stat(outFile)).size > 0) return { file: outFile, generated: true };
-    } catch { /* file tak terbuat */ }
+    } catch { /* file was not created */ }
   }
   await fs.rm(outFile, { force: true }).catch(() => {});
   return null;

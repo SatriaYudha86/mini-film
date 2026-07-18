@@ -7,8 +7,8 @@ const DATA_DIR = path.join(__dirname, '..', 'data');
 const CONFIG_PATH = path.join(DATA_DIR, 'config.json');
 
 const DEFAULT_CONFIG = {
-  passwordHash: null, // "salt:hash" (scrypt), null = belum di-setup
-  libraries: [],      // daftar absolute path folder film
+  passwordHash: null, // "salt:hash" (scrypt), null = not set up yet
+  libraries: [],      // list of absolute movie folder paths
 };
 
 let cache = null;

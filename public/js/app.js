@@ -28,9 +28,9 @@ function showAuth(isSetup) {
   $("#app").classList.add("hidden");
   $("#auth-screen").classList.remove("hidden");
   $("#auth-subtitle").textContent = isSetup
-    ? "Buat password untuk mengamankan servermu."
-    : "Masukkan password untuk masuk.";
-  $("#auth-submit").textContent = isSetup ? "Buat & Masuk" : "Masuk";
+    ? "Create a password to secure your server."
+    : "Enter your password to sign in.";
+  $("#auth-submit").textContent = isSetup ? "Create & sign in" : "Sign in";
   $("#auth-password2").classList.toggle("hidden", !isSetup);
   $("#auth-error").classList.add("hidden");
   $("#auth-password").focus();
@@ -44,7 +44,7 @@ $("#auth-form").addEventListener("submit", async (e) => {
   try {
     if (setupMode) {
       if (pw !== $("#auth-password2").value)
-        throw new Error("Password tidak sama");
+        throw new Error("Passwords do not match");
       await api("/api/setup", {
         method: "POST",
         body: JSON.stringify({ password: pw }),
@@ -99,14 +99,14 @@ function fmtDuration(sec) {
   if (!sec) return "";
   const h = Math.floor(sec / 3600);
   const m = Math.round((sec % 3600) / 60);
-  return h ? `${h}j ${m}m` : `${m}m`;
+  return h ? `${h}h ${m}m` : `${m}m`;
 }
 function fmtSize(bytes) {
   const gb = bytes / 1e9;
   return gb >= 1 ? `${gb.toFixed(1)} GB` : `${Math.round(bytes / 1e6)} MB`;
 }
 
-let activeLib = null; // filter folder aktif
+let activeLib = null; // active folder filter
 
 async function loadMovies() {
   const grid = $("#grid");
@@ -119,7 +119,7 @@ async function loadMovies() {
     applyView();
   } catch (e) {
     $("#hero").classList.add("hidden");
-    grid.innerHTML = `<p class="error">Gagal memuat: ${e.message}</p>`;
+    grid.innerHTML = `<p class="error">Failed to load: ${e.message}</p>`;
   }
 }
 
@@ -134,7 +134,7 @@ function showSkeletons(grid, n) {
   }
 }
 
-// Gabungan filter folder + pencarian
+// Combined folder filter + search
 function applyView() {
   const q = $("#search").value.toLowerCase().trim();
   let list = allMovies;
@@ -155,12 +155,12 @@ function renderStats(items) {
   const totalSize = items.reduce((a, m) => a + m.size, 0);
   const libs = new Set(items.map((m) => m.library));
   $("#hero-sub").textContent =
-    `Selamat menonton — koleksi pribadimu siap diputar.`;
+    `Enjoy — your personal collection is ready to play.`;
   $("#stats").innerHTML = [
-    statTile("🎞️", filmCount, "Film", "a"),
+    statTile("🎞️", filmCount, "Movies", "a"),
     statTile("📺", seriesCount, "Series", "c"),
-    statTile("🗂️", libs.size, "Folder", "b"),
-    statTile("💾", fmtSize(totalSize), "Ukuran", "d"),
+    statTile("🗂️", libs.size, "Folders", "b"),
+    statTile("💾", fmtSize(totalSize), "Size", "d"),
   ].join("");
 }
 function statTile(icon, value, label, variant) {
@@ -180,7 +180,7 @@ function renderFilters(movies) {
   }
   const chip = (lib, label) =>
     `<button class="fchip ${activeLib === lib ? "active" : ""}" data-lib="${lib === null ? "" : escapeHtml(lib)}">${escapeHtml(label)}</button>`;
-  bar.innerHTML = chip(null, "Semua") + libs.map((l) => chip(l, l)).join("");
+  bar.innerHTML = chip(null, "All") + libs.map((l) => chip(l, l)).join("");
   bar.querySelectorAll(".fchip").forEach((b) => {
     b.addEventListener("click", () => {
       activeLib = b.dataset.lib || null;
@@ -227,12 +227,12 @@ function renderMovies(items) {
           }</div>
         </div>
         ${badge}
-        <button class="kebab" title="Opsi thumbnail" aria-label="Opsi">
+        <button class="kebab" title="Thumbnail options" aria-label="Options">
           <svg viewBox="0 0 24 24"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>
         </button>
         <div class="card-menu">
-          <button data-act="upload">🖼️ Ubah thumbnail…</button>
-          <button data-act="reset">↩️ Poster otomatis</button>
+          <button data-act="upload">🖼️ Change thumbnail…</button>
+          <button data-act="reset">↩️ Automatic poster</button>
         </div>
       </div>
       <div class="meta">
@@ -272,9 +272,9 @@ function openSeries(series, cardEl) {
   $("#series-title").textContent =
     series.title + (series.year ? ` (${series.year})` : "");
   $("#series-meta").textContent =
-    `${series.episodeCount} episode · ${fmtSize(series.size)}`;
+    `${series.episodeCount} episodes · ${fmtSize(series.size)}`;
   const poster = $("#series-poster");
-  poster.src = cardEl.querySelector(".poster").src; // reuse (termasuk cache-bust bila diedit)
+  poster.src = cardEl.querySelector(".poster").src; // reuse (keeps the cache-bust query if edited)
   const list = $("#episode-list");
   list.innerHTML = "";
   series.episodes.forEach((ep, i) => {
@@ -305,14 +305,14 @@ $("#series-modal").addEventListener("click", (e) => {
 
 $("#search").addEventListener("input", applyView);
 
-// Warna gradient deterministik dari judul (untuk poster fallback)
+// Deterministic gradient colour from the title (for the poster fallback)
 function hueFor(str) {
   let h = 0;
   for (let i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) % 360;
   return [h, (h + 40) % 360];
 }
 
-// ---------- Thumbnail kustom ----------
+// ---------- Custom thumbnail ----------
 function closeAllMenus() {
   document
     .querySelectorAll(".card-menu.open")
@@ -320,7 +320,7 @@ function closeAllMenus() {
 }
 document.addEventListener("click", closeAllMenus);
 
-// Satu file input dipakai bersama
+// A single shared file input
 const posterInput = document.createElement("input");
 posterInput.type = "file";
 posterInput.accept = "image/*";
@@ -340,7 +340,7 @@ posterInput.addEventListener("change", async () => {
   const { movie, el } = pendingUpload;
   pendingUpload = null;
   if (!file.type.startsWith("image/")) {
-    toast("⚠️ File harus berupa gambar", "error");
+    toast("⚠️ File must be an image", "error");
     return;
   }
   try {
@@ -350,9 +350,9 @@ posterInput.addEventListener("change", async () => {
       body: file,
     });
     const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.error || "gagal upload");
+    if (!res.ok) throw new Error(data.error || "upload failed");
     refreshPoster(el);
-    toast("🖼️ Thumbnail diperbarui", "success");
+    toast("🖼️ Thumbnail updated", "success");
   } catch (e) {
     toast("⚠️ " + e.message, "error");
   }
@@ -362,13 +362,13 @@ async function resetPosterFor(movie, el) {
   try {
     await api(`/api/thumbnail/${movie.posterId}/custom`, { method: "DELETE" });
     refreshPoster(el);
-    toast("↩️ Kembali ke poster otomatis", "info");
+    toast("↩️ Reverted to automatic poster", "info");
   } catch (e) {
     toast("⚠️ " + e.message, "error");
   }
 }
 
-// Muat ulang gambar poster pada satu kartu (bust cache).
+// Reload one card's poster image (cache-busting).
 function refreshPoster(el) {
   const img = el.querySelector(".poster");
   const base = img.getAttribute("src").split("?")[0];
@@ -377,7 +377,7 @@ function refreshPoster(el) {
 }
 
 // ---------- Player ----------
-// Konteks pemutaran series: { episodes, index, seriesTitle }. null = film satuan.
+// Series playback context: { episodes, index, seriesTitle }. null = standalone movie.
 let playCtx = null;
 
 function play(m, ctx = null) {
@@ -391,7 +391,7 @@ function play(m, ctx = null) {
   video.play().catch(() => {});
 }
 
-// Putar episode ke-i dari series yang sedang dibuka.
+// Play episode i of the series currently open.
 function playEpisodeAt(i) {
   if (!playCtx) return;
   const eps = playCtx.episodes;
@@ -412,7 +412,7 @@ function updatePlayerNav() {
   $("#prev-ep").disabled = index <= 0;
   $("#next-ep").disabled = index >= episodes.length - 1;
   $("#ep-indicator").textContent =
-    `Episode ${index + 1} dari ${episodes.length}`;
+    `Episode ${index + 1} of ${episodes.length}`;
 }
 
 $("#prev-ep").addEventListener("click", () =>
@@ -436,7 +436,7 @@ $("#player-close").addEventListener("click", closePlayer);
 $("#player-modal").addEventListener("click", (e) => {
   if (e.target.id === "player-modal") closePlayer();
 });
-// ---------- Pintasan keyboard (ala YouTube) ----------
+// ---------- Keyboard shortcuts (YouTube-style) ----------
 const RATES = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
 
 function isPlayerOpen() {
@@ -489,7 +489,7 @@ async function togglePiP() {
     else if (document.pictureInPictureEnabled)
       await v.requestPictureInPicture();
   } catch {
-    /* PiP tidak tersedia di browser ini — abaikan */
+    /* PiP unavailable in this browser — ignore */
   }
 }
 function toggleHelp(force) {
@@ -503,7 +503,7 @@ document.addEventListener("keydown", (e) => {
   const key = e.key;
   const lower = typeof key === "string" ? key.toLowerCase() : "";
 
-  // "/" fokus ke pencarian (hanya di grid, saat player tertutup)
+  // "/" focuses search (grid only, when the player is closed)
   if (key === "/" && !isPlayerOpen()) {
     e.preventDefault();
     $("#search").focus();
@@ -577,14 +577,14 @@ async function loadLibraries() {
   list.innerHTML = "";
   const { libraries } = await api("/api/libraries");
   if (!libraries.length) {
-    list.innerHTML = '<li class="muted">Belum ada folder.</li>';
+    list.innerHTML = '<li class="muted">No folders yet.</li>';
   }
   for (const lib of libraries) {
     const li = document.createElement("li");
     li.innerHTML = `<span class="path">${escapeHtml(lib)}</span>`;
     const btn = document.createElement("button");
     btn.className = "ghost small";
-    btn.textContent = "Hapus";
+    btn.textContent = "Remove";
     btn.addEventListener("click", async () => {
       await api("/api/libraries", {
         method: "DELETE",
@@ -593,7 +593,7 @@ async function loadLibraries() {
       loadLibraries();
       allMovies = [];
       activeLib = null;
-      toast("🗑️ Folder dihapus", "info");
+      toast("🗑️ Folder removed", "info");
     });
     li.appendChild(btn);
     list.appendChild(li);
@@ -611,7 +611,7 @@ async function addLibrary(dir) {
     $("#lib-input").value = "";
     $("#fs-browser").classList.add("hidden");
     loadLibraries();
-    toast("✅ Folder ditambahkan — buka tab Film", "success");
+    toast("✅ Folder added — open the Movies tab", "success");
     msg.textContent = "";
   } catch (e) {
     toast("⚠️ " + e.message, "error");

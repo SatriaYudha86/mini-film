@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="id">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -22,8 +22,8 @@
       <div class="logo">🎬 Mini-Stream</div>
       <p id="auth-subtitle" class="muted"></p>
       <input type="password" id="auth-password" placeholder="Password" autocomplete="current-password" />
-      <input type="password" id="auth-password2" class="hidden" placeholder="Ulangi password" autocomplete="new-password" />
-      <button type="submit" id="auth-submit">Masuk</button>
+      <input type="password" id="auth-password2" class="hidden" placeholder="Repeat password" autocomplete="new-password" />
+      <button type="submit" id="auth-submit">Sign in</button>
       <p id="auth-error" class="error hidden"></p>
     </form>
   </div>
@@ -32,11 +32,11 @@
   <div id="app" class="hidden">
     <header class="topbar">
       <div class="brand" data-nav="home">🎬 Mini-Stream</div>
-      <input type="search" id="search" placeholder="Cari film…" />
+      <input type="search" id="search" placeholder="Search movies…" />
       <nav>
-        <button class="nav-btn" data-nav="home">Film</button>
-        <button class="nav-btn" data-nav="settings">Pengaturan</button>
-        <button class="nav-btn ghost" id="logout-btn">Keluar</button>
+        <button class="nav-btn" data-nav="home">Movies</button>
+        <button class="nav-btn" data-nav="settings">Settings</button>
+        <button class="nav-btn ghost" id="logout-btn">Sign out</button>
       </nav>
     </header>
 
@@ -44,26 +44,26 @@
     <main id="view-home" class="view">
       <section id="hero" class="hero hidden">
         <div class="hero-text">
-          <h1>Koleksi Film</h1>
+          <h1>Your Library</h1>
           <p id="hero-sub" class="muted"></p>
         </div>
         <div id="stats" class="stats"></div>
       </section>
       <div id="filters" class="filters"></div>
       <div id="empty-state" class="empty hidden">
-        <p>Belum ada film. Tambahkan folder di <a href="#" data-nav="settings">Pengaturan</a>.</p>
+        <p>No movies yet. Add a folder in <a href="#" data-nav="settings">Settings</a>.</p>
       </div>
       <div id="grid" class="grid"></div>
     </main>
 
     <!-- Settings -->
     <main id="view-settings" class="view hidden">
-      <h2>Folder Perpustakaan</h2>
+      <h2>Library Folders</h2>
       <ul id="lib-list" class="lib-list"></ul>
       <div class="add-lib">
-        <input type="text" id="lib-input" placeholder="/path/ke/folder/film" />
-        <button id="browse-btn" class="ghost">Telusuri…</button>
-        <button id="add-lib-btn">Tambah</button>
+        <input type="text" id="lib-input" placeholder="/path/to/movie/folder" />
+        <button id="browse-btn" class="ghost">Browse…</button>
+        <button id="add-lib-btn">Add</button>
       </div>
       <p id="lib-msg" class="muted"></p>
 
@@ -71,15 +71,15 @@
       <div id="fs-browser" class="fs-browser hidden">
         <div class="fs-head">
           <span id="fs-current" class="mono"></span>
-          <button id="fs-close" class="ghost small">Tutup</button>
+          <button id="fs-close" class="ghost small">Close</button>
         </div>
         <ul id="fs-list" class="fs-list"></ul>
-        <button id="fs-pick" class="small">Pilih folder ini</button>
+        <button id="fs-pick" class="small">Use this folder</button>
       </div>
     </main>
   </div>
 
-  <!-- Series modal (daftar episode) -->
+  <!-- Series modal (episode list) -->
   <div id="series-modal" class="modal hidden">
     <div class="modal-inner series-inner">
       <button id="series-close" class="modal-close">✕</button>
@@ -101,30 +101,30 @@
       <div class="video-wrap">
         <video id="player" controls autoplay playsinline></video>
         <div id="shortcut-help" class="shortcut-help hidden">
-          <h4>Pintasan Keyboard</h4>
+          <h4>Keyboard Shortcuts</h4>
           <ul>
-            <li><kbd>Space</kbd> / <kbd>K</kbd><span>Play / Pause</span></li>
-            <li><kbd>J</kbd> / <kbd>L</kbd><span>Mundur / maju 10 detik</span></li>
-            <li><kbd>←</kbd> / <kbd>→</kbd><span>Mundur / maju 5 detik</span></li>
+            <li><kbd>Space</kbd> / <kbd>K</kbd><span>Play / pause</span></li>
+            <li><kbd>J</kbd> / <kbd>L</kbd><span>Back / forward 10 seconds</span></li>
+            <li><kbd>←</kbd> / <kbd>→</kbd><span>Back / forward 5 seconds</span></li>
             <li><kbd>↑</kbd> / <kbd>↓</kbd><span>Volume +/- 5%</span></li>
-            <li><kbd>M</kbd><span>Bisukan / bunyikan</span></li>
-            <li><kbd>F</kbd><span>Layar penuh</span></li>
+            <li><kbd>M</kbd><span>Mute / unmute</span></li>
+            <li><kbd>F</kbd><span>Fullscreen</span></li>
             <li><kbd>I</kbd><span>Picture-in-Picture</span></li>
-            <li><kbd>0</kbd>–<kbd>9</kbd><span>Lompat ke 0%–90%</span></li>
-            <li><kbd>Home</kbd> / <kbd>End</kbd><span>Awal / akhir video</span></li>
-            <li><kbd>,</kbd> / <kbd>.</kbd><span>Mundur / maju 1 frame (saat jeda)</span></li>
-            <li><kbd>&lt;</kbd> / <kbd>&gt;</kbd><span>Perlambat / percepat</span></li>
-            <li><kbd>Shift</kbd>+<kbd>P</kbd> / <kbd>N</kbd><span>Episode sebelumnya / berikutnya</span></li>
-            <li><kbd>?</kbd><span>Tampilkan bantuan ini</span></li>
-            <li><kbd>Esc</kbd><span>Tutup</span></li>
+            <li><kbd>0</kbd>–<kbd>9</kbd><span>Jump to 0%–90%</span></li>
+            <li><kbd>Home</kbd> / <kbd>End</kbd><span>Start / end of video</span></li>
+            <li><kbd>,</kbd> / <kbd>.</kbd><span>Previous / next frame (when paused)</span></li>
+            <li><kbd>&lt;</kbd> / <kbd>&gt;</kbd><span>Slow down / speed up</span></li>
+            <li><kbd>Shift</kbd>+<kbd>P</kbd> / <kbd>N</kbd><span>Previous / next episode</span></li>
+            <li><kbd>?</kbd><span>Show this help</span></li>
+            <li><kbd>Esc</kbd><span>Close</span></li>
           </ul>
         </div>
       </div>
       <h3 id="player-title"></h3>
       <div id="player-nav" class="player-nav hidden">
-        <button id="prev-ep" class="ghost">⏮ Sebelumnya</button>
+        <button id="prev-ep" class="ghost">⏮ Previous</button>
         <span id="ep-indicator" class="muted"></span>
-        <button id="next-ep" class="ghost">Berikutnya ⏭</button>
+        <button id="next-ep" class="ghost">Next ⏭</button>
       </div>
     </div>
   </div>

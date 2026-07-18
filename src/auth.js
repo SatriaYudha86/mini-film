@@ -32,7 +32,7 @@ export async function checkPassword(password) {
 }
 
 // ---- Sessions (in-memory token store) ----
-const SESSION_TTL = 1000 * 60 * 60 * 24 * 30; // 30 hari
+const SESSION_TTL = 1000 * 60 * 60 * 24 * 30; // 30 days
 const sessions = new Map(); // token -> expiry (ms)
 
 export function createSession() {

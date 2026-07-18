@@ -18,10 +18,10 @@ import {
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT || 3000;
-const HOST = process.env.HOST || '0.0.0.0'; // 0.0.0.0 = bisa diakses dari LAN
+const HOST = process.env.HOST || '0.0.0.0'; // 0.0.0.0 = reachable from the LAN
 const app = express();
 
-// Cari IP LAN untuk ditampilkan di log
+// Find the LAN IP to show in the startup log
 function lanAddress() {
   for (const iface of Object.values(os.networkInterfaces())) {
     for (const net of iface || []) {
@@ -43,10 +43,10 @@ app.get('/api/status', async (req, res) => {
 });
 
 app.post('/api/setup', async (req, res) => {
-  if (await isConfigured()) return res.status(400).json({ error: 'sudah di-setup' });
+  if (await isConfigured()) return res.status(400).json({ error: 'already set up' });
   const { password } = req.body || {};
   if (!password || password.length < 4) {
-    return res.status(400).json({ error: 'password minimal 4 karakter' });
+    return res.status(400).json({ error: 'password must be at least 4 characters' });
   }
   await setupPassword(password);
   const token = createSession();
@@ -55,10 +55,10 @@ app.post('/api/setup', async (req, res) => {
 });
 
 app.post('/api/login', async (req, res) => {
-  if (!(await isConfigured())) return res.status(400).json({ error: 'belum di-setup' });
+  if (!(await isConfigured())) return res.status(400).json({ error: 'not set up yet' });
   const { password } = req.body || {};
   if (!(await checkPassword(password || ''))) {
-    return res.status(401).json({ error: 'password salah' });
+    return res.status(401).json({ error: 'wrong password' });
   }
   const token = createSession();
   setSessionCookie(res, token);
@@ -72,7 +72,7 @@ app.post('/api/logout', (req, res) => {
   res.json({ ok: true });
 });
 
-// ---------- Libraries (butuh auth) ----------
+// ---------- Libraries (auth required) ----------
 app.get('/api/libraries', requireAuth, async (req, res) => {
   res.json({ libraries: await getLibraries() });
 });
@@ -80,18 +80,18 @@ app.get('/api/libraries', requireAuth, async (req, res) => {
 app.post('/api/libraries', requireAuth, async (req, res) => {
   const { dir } = req.body || {};
   if (!dir || typeof dir !== 'string') {
-    return res.status(400).json({ error: 'path tidak valid' });
+    return res.status(400).json({ error: 'invalid path' });
   }
   const abs = path.resolve(dir);
   let stat;
   try { stat = await fs.stat(abs); } catch {
-    return res.status(400).json({ error: 'folder tidak ditemukan: ' + abs });
+    return res.status(400).json({ error: 'folder not found: ' + abs });
   }
-  if (!stat.isDirectory()) return res.status(400).json({ error: 'bukan folder: ' + abs });
+  if (!stat.isDirectory()) return res.status(400).json({ error: 'not a folder: ' + abs });
 
   const cfg = await loadConfig();
   if (cfg.libraries.includes(abs)) {
-    return res.status(400).json({ error: 'folder sudah ada' });
+    return res.status(400).json({ error: 'folder already added' });
   }
   cfg.libraries.push(abs);
   await saveConfig({ libraries: cfg.libraries });
@@ -106,7 +106,7 @@ app.delete('/api/libraries', requireAuth, async (req, res) => {
   res.json({ libraries: next });
 });
 
-// Bantu browsing folder di server untuk memilih path (butuh auth).
+// Helper to browse server folders when picking a path (auth required).
 app.get('/api/fs', requireAuth, async (req, res) => {
   const dir = req.query.path ? path.resolve(String(req.query.path)) : path.parse(process.cwd()).root;
   try {
@@ -117,7 +117,7 @@ app.get('/api/fs', requireAuth, async (req, res) => {
       .sort((a, b) => a.name.localeCompare(b.name));
     res.json({ current: dir, parent: path.dirname(dir), dirs });
   } catch (e) {
-    res.status(400).json({ error: 'tidak bisa membaca folder' });
+    res.status(400).json({ error: 'cannot read folder' });
   }
 });
 
@@ -133,7 +133,7 @@ app.get('/api/movies', requireAuth, async (req, res) => {
 app.get('/api/movie/:id', requireAuth, async (req, res) => {
   const file = decodeId(req.params.id);
   if (!file || !(await assertInsideLibrary(file))) {
-    return res.status(403).json({ error: 'akses ditolak' });
+    return res.status(403).json({ error: 'access denied' });
   }
   const duration = await getDuration(file);
   res.json({ id: req.params.id, duration });
@@ -149,35 +149,35 @@ app.get('/api/thumbnail/:id', requireAuth, async (req, res) => {
     res.status(404).sendFile(path.join(__dirname, 'public', 'placeholder.svg'));
     return;
   }
-  // "no-cache" = browser boleh menyimpan, tapi WAJIB revalidasi dulu.
-  // sendFile mengirim ETag + Last-Modified, jadi kalau poster tidak berubah
-  // balasannya 304 (hemat), dan kalau diganti user langsung tampil baru.
+  // "no-cache" = the browser may store it, but MUST revalidate first.
+  // sendFile sends ETag + Last-Modified, so an unchanged poster
+  // answers 304 (cheap), while a replaced one shows up immediately.
   res.setHeader('Cache-Control', 'no-cache');
   res.sendFile(thumb.file);
 });
 
-// Upload poster/banner kustom (body = raw image)
+// Upload a custom poster/banner (body = raw image)
 app.post('/api/thumbnail/:id/upload',
   requireAuth,
   express.raw({ type: ['image/*'], limit: '20mb' }),
   async (req, res) => {
     const file = decodeId(req.params.id);
     if (!file || !(await assertInsideLibrary(file))) {
-      return res.status(403).json({ error: 'akses ditolak' });
+      return res.status(403).json({ error: 'access denied' });
     }
     if (!req.body || !req.body.length) {
-      return res.status(400).json({ error: 'gambar kosong / tipe tidak didukung' });
+      return res.status(400).json({ error: 'empty image / unsupported type' });
     }
     const ok = await saveCustomPoster(file, req.body);
-    if (!ok) return res.status(500).json({ error: 'gagal menyimpan gambar' });
+    if (!ok) return res.status(500).json({ error: 'failed to save image' });
     res.json({ ok: true });
   });
 
-// Hapus poster kustom (kembali ke poster otomatis)
+// Remove the custom poster (fall back to the automatic one)
 app.delete('/api/thumbnail/:id/custom', requireAuth, async (req, res) => {
   const file = decodeId(req.params.id);
   if (!file || !(await assertInsideLibrary(file))) {
-    return res.status(403).json({ error: 'akses ditolak' });
+    return res.status(403).json({ error: 'access denied' });
   }
   await removeCustomPoster(file);
   res.json({ ok: true });
@@ -202,7 +202,7 @@ const server = await (async () => {
     if (lan) console.log(`    • Jaringan: http://${lan}:${PORT}`);
     console.log('');
   });
-  // Hitung durasi di background (tidak memblok startup).
+  // Compute durations in the background (does not block startup).
   warmDurations().catch(() => {});
   return s;
 })();
