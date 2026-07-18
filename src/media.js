@@ -1,0 +1,287 @@
+import { promises as fs, createReadStream } from 'node:fs';
+import path from 'node:path';
+import crypto from 'node:crypto';
+import { spawn } from 'node:child_process';
+import { getLibraries, thumbsDir, customDir, metaCachePath } from './config.js';
+
+const VIDEO_EXT = new Set(['.mp4', '.m4v', '.webm', '.mov']);
+const POSTER_NAMES = ['poster', 'folder', 'cover', 'movie'];
+const IMG_EXT = ['.jpg', '.jpeg', '.png', '.webp'];
+const SKIP_DIRS = new Set(['node_modules', '.git', '@eaDir', '.thumbnails']);
+
+// ---------- Path security ----------
+// id = base64url dari absolute path. Selalu divalidasi ulang thd libraries.
+export function encodeId(absPath) {
+  return Buffer.from(absPath).toString('base64url');
+}
+export function decodeId(id) {
+  try {
+    return Buffer.from(id, 'base64url').toString('utf8');
+  } catch {
+    return null;
+  }
+}
+
+// Pastikan target berada di dalam salah satu library root (cegah path traversal).
+export async function assertInsideLibrary(absPath) {
+  const libs = await getLibraries();
+  let real;
+  try {
+    real = await fs.realpath(absPath);
+  } catch {
+    return false;
+  }
+  for (const lib of libs) {
+    let libReal;
+    try { libReal = await fs.realpath(lib); } catch { continue; }
+    if (real === libReal || real.startsWith(libReal + path.sep)) return true;
+  }
+  return false;
+}
+
+// ---------- Title cleaning ----------
+const TAG_RE = /\b(1080p|720p|2160p|480p|4k|x264|x265|h264|h265|hevc|bluray|blu-ray|brrip|bdrip|webrip|web-dl|webdl|hdrip|dvdrip|hdtv|xvid|aac|ac3|dts|hdr|remux|proper|repack|internal|amzn|nf|yify|yts|rarbg|ita|eng|multi)\b/gi;
+
+export function cleanTitle(filename) {
+  let name = filename.replace(/\.[^.]+$/, '');
+  name = name.replace(/[._]/g, ' ');
+  const yearMatch = name.match(/\b(19|20)\d{2}\b/);
+  const year = yearMatch ? yearMatch[0] : null;
+  if (year) name = name.slice(0, name.indexOf(year));
+  name = name.replace(TAG_RE, ' ');
+  name = name.replace(/[\[\](){}]/g, ' ');
+  name = name.replace(/\s{2,}/g, ' ').trim();
+  name = name.replace(/[-–\s]+$/, '').trim();
+  if (!name) name = filename.replace(/\.[^.]+$/, '');
+  return { title: name, year };
+}
+
+// ---------- Scanning ----------
+async function walk(dir, root, out, depth = 0) {
+  if (depth > 8) return;
+  let entries;
+  try {
+    entries = await fs.readdir(dir, { withFileTypes: true });
+  } catch {
+    return;
+  }
+  for (const entry of entries) {
+    if (entry.name.startsWith('.')) continue;
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      if (SKIP_DIRS.has(entry.name)) continue;
+      await walk(full, root, out, depth + 1);
+    } else if (entry.isFile()) {
+      const ext = path.extname(entry.name).toLowerCase();
+      if (VIDEO_EXT.has(ext)) out.push({ full, root });
+    }
+  }
+}
+
+export async function scanMovies() {
+  const libs = await getLibraries();
+  const files = [];
+  for (const lib of libs) {
+    await walk(lib, lib, files);
+  }
+  const meta = await loadMetaCache();
+  const movies = [];
+  for (const { full, root } of files) {
+    let stat;
+    try { stat = await fs.stat(full); } catch { continue; }
+    const { title, year } = cleanTitle(path.basename(full));
+    movies.push({
+      id: encodeId(full),
+      title,
+      year,
+      filename: path.basename(full),
+      library: path.basename(root),
+      relPath: path.relative(root, full),
+      size: stat.size,
+      duration: meta[cacheKey(full, stat)]?.duration ?? null,
+    });
+  }
+  movies.sort((a, b) => a.title.localeCompare(b.title));
+  return movies;
+}
+
+// ---------- Metadata cache (durasi) ----------
+let metaCache = null;
+function cacheKey(file, stat) {
+  return crypto.createHash('md5').update(`${file}:${stat.size}:${stat.mtimeMs}`).digest('hex');
+}
+async function loadMetaCache() {
+  if (metaCache) return metaCache;
+  try {
+    metaCache = JSON.parse(await fs.readFile(metaCachePath(), 'utf8'));
+  } catch {
+    metaCache = {};
+  }
+  return metaCache;
+}
+async function saveMetaCache() {
+  try {
+    await fs.writeFile(metaCachePath(), JSON.stringify(metaCache), 'utf8');
+  } catch { /* ignore */ }
+}
+
+function ffprobeDuration(file) {
+  return new Promise((resolve) => {
+    const p = spawn('ffprobe', [
+      '-v', 'error', '-show_entries', 'format=duration',
+      '-of', 'default=noprint_wrappers=1:nokey=1', file,
+    ]);
+    let out = '';
+    p.stdout.on('data', (d) => { out += d; });
+    p.on('close', () => {
+      const val = parseFloat(out.trim());
+      resolve(Number.isFinite(val) ? val : null);
+    });
+    p.on('error', () => resolve(null));
+  });
+}
+
+export async function getDuration(file) {
+  let stat;
+  try { stat = await fs.stat(file); } catch { return null; }
+  const cache = await loadMetaCache();
+  const key = cacheKey(file, stat);
+  if (cache[key]?.duration !== undefined) return cache[key].duration;
+  const duration = await ffprobeDuration(file);
+  cache[key] = { duration };
+  await saveMetaCache();
+  return duration;
+}
+
+// Hitung durasi untuk semua film yang belum ter-cache (concurrency terbatas).
+export async function warmDurations(concurrency = 3) {
+  const libs = await getLibraries();
+  const files = [];
+  for (const lib of libs) await walk(lib, lib, files);
+  const queue = files.map((f) => f.full);
+  const workers = Array.from({ length: concurrency }, async () => {
+    while (queue.length) {
+      const file = queue.shift();
+      await getDuration(file);
+    }
+  });
+  await Promise.all(workers);
+}
+
+// ---------- Thumbnail / poster ----------
+async function findLocalPoster(videoFile) {
+  const dir = path.dirname(videoFile);
+  const base = path.basename(videoFile, path.extname(videoFile));
+  const candidates = [];
+  for (const ext of IMG_EXT) candidates.push(path.join(dir, base + ext));
+  for (const name of POSTER_NAMES) {
+    for (const ext of IMG_EXT) candidates.push(path.join(dir, name + ext));
+  }
+  for (const c of candidates) {
+    try { await fs.access(c); return c; } catch { /* next */ }
+  }
+  return null;
+}
+
+function generateThumb(videoFile, outFile, seek) {
+  return new Promise((resolve) => {
+    const p = spawn('ffmpeg', [
+      '-ss', String(seek), '-i', videoFile,
+      '-frames:v', '1', '-vf', 'scale=400:-1',
+      '-y', outFile,
+    ]);
+    p.on('close', (code) => resolve(code === 0));
+    p.on('error', () => resolve(false));
+  });
+}
+
+// Poster kustom yang di-upload user (selalu .jpg, di-key dari path video).
+export function customPosterFile(videoFile) {
+  const h = crypto.createHash('md5').update(videoFile).digest('hex');
+  return path.join(customDir(), h + '.jpg');
+}
+
+// Simpan gambar upload jadi poster kustom (dinormalkan ke jpg via ffmpeg).
+export async function saveCustomPoster(videoFile, buffer) {
+  const out = customPosterFile(videoFile);
+  const tmp = out + '.tmp';
+  await fs.writeFile(tmp, buffer);
+  const ok = await new Promise((resolve) => {
+    const p = spawn('ffmpeg', ['-i', tmp, '-vf', 'scale=600:-1', '-q:v', '3', '-y', out]);
+    p.on('close', (code) => resolve(code === 0));
+    p.on('error', () => resolve(false));
+  });
+  if (!ok) {
+    // Fallback: simpan mentah kalau ffmpeg gagal (mis. sudah jpg).
+    await fs.copyFile(tmp, out).catch(() => {});
+  }
+  await fs.rm(tmp, { force: true }).catch(() => {});
+  try { await fs.access(out); return true; } catch { return false; }
+}
+
+export async function removeCustomPoster(videoFile) {
+  await fs.rm(customPosterFile(videoFile), { force: true }).catch(() => {});
+}
+
+// Kembalikan path file gambar poster (kustom > lokal > generate & cache).
+export async function getThumbnail(videoFile) {
+  const custom = customPosterFile(videoFile);
+  try { await fs.access(custom); return { file: custom, generated: true }; } catch { /* next */ }
+
+  const local = await findLocalPoster(videoFile);
+  if (local) return { file: local, generated: false };
+
+  let stat;
+  try { stat = await fs.stat(videoFile); } catch { return null; }
+  const key = cacheKey(videoFile, stat);
+  const outFile = path.join(thumbsDir(), key + '.jpg');
+  try { await fs.access(outFile); return { file: outFile, generated: true }; } catch { /* generate */ }
+
+  const duration = await getDuration(videoFile);
+  const seek = duration ? Math.min(duration * 0.2, duration - 1) : 30;
+  const ok = await generateThumb(videoFile, outFile, Math.max(1, seek));
+  if (ok) return { file: outFile, generated: true };
+  return null;
+}
+
+// ---------- Range streaming ----------
+const MIME = {
+  '.mp4': 'video/mp4', '.m4v': 'video/mp4',
+  '.webm': 'video/webm', '.mov': 'video/quicktime',
+};
+
+export async function streamVideo(req, res, file) {
+  let stat;
+  try { stat = await fs.stat(file); } catch {
+    res.status(404).end('not found');
+    return;
+  }
+  const total = stat.size;
+  const type = MIME[path.extname(file).toLowerCase()] || 'application/octet-stream';
+  const range = req.headers.range;
+
+  if (!range) {
+    res.writeHead(200, {
+      'Content-Length': total,
+      'Content-Type': type,
+      'Accept-Ranges': 'bytes',
+    });
+    createReadStream(file).pipe(res);
+    return;
+  }
+
+  const match = /bytes=(\d*)-(\d*)/.exec(range);
+  let start = match && match[1] ? parseInt(match[1], 10) : 0;
+  let end = match && match[2] ? parseInt(match[2], 10) : total - 1;
+  if (Number.isNaN(start) || start >= total) start = 0;
+  if (Number.isNaN(end) || end >= total) end = total - 1;
+  if (start > end) { start = 0; end = total - 1; }
+
+  res.writeHead(206, {
+    'Content-Range': `bytes ${start}-${end}/${total}`,
+    'Accept-Ranges': 'bytes',
+    'Content-Length': end - start + 1,
+    'Content-Type': type,
+  });
+  createReadStream(file, { start, end }).pipe(res);
+}
