@@ -131,19 +131,19 @@ function applyView() {
   renderMovies(list);
 }
 
-function renderStats(movies) {
+function renderStats(items) {
   const hero = $('#hero');
-  if (!movies.length) { hero.classList.add('hidden'); return; }
+  if (!items.length) { hero.classList.add('hidden'); return; }
   hero.classList.remove('hidden');
-  const totalSize = movies.reduce((a, m) => a + m.size, 0);
-  const totalDur = movies.reduce((a, m) => a + (m.duration || 0), 0);
-  const libs = new Set(movies.map((m) => m.library));
-  const hours = Math.round(totalDur / 3600);
+  const filmCount = items.filter((m) => m.type !== 'series').length;
+  const seriesCount = items.filter((m) => m.type === 'series').length;
+  const totalSize = items.reduce((a, m) => a + m.size, 0);
+  const libs = new Set(items.map((m) => m.library));
   $('#hero-sub').textContent = `Selamat menonton — koleksi pribadimu siap diputar.`;
   $('#stats').innerHTML = [
-    statTile('🎞️', movies.length, 'Film', 'a'),
+    statTile('🎞️', filmCount, 'Film', 'a'),
+    statTile('📺', seriesCount, 'Series', 'c'),
     statTile('🗂️', libs.size, 'Folder', 'b'),
-    statTile('⏱️', hours ? hours + ' jam' : '—', 'Total Durasi', 'c'),
     statTile('💾', fmtSize(totalSize), 'Ukuran', 'd'),
   ].join('');
 }
@@ -172,26 +172,34 @@ function renderFilters(movies) {
   });
 }
 
-function renderMovies(movies) {
+function renderMovies(items) {
   const grid = $('#grid');
   const empty = $('#empty-state');
   grid.innerHTML = '';
-  empty.classList.toggle('hidden', movies.length > 0);
-  for (const m of movies) {
+  empty.classList.toggle('hidden', items.length > 0);
+  for (const m of items) {
+    const isSeries = m.type === 'series';
     const el = document.createElement('div');
     el.className = 'movie';
-    const dur = fmtDuration(m.duration);
-    const subParts = [m.year ? `<span class="chip">${escapeHtml(m.year)}</span>` : '', escapeHtml(fmtSize(m.size))].filter(Boolean).join(' ');
+    const badge = isSeries
+      ? `<span class="badge-series">📺 ${m.episodeCount} eps</span>`
+      : (fmtDuration(m.duration) ? `<span class="badge-dur">${escapeHtml(fmtDuration(m.duration))}</span>` : '');
+    const subParts = [
+      m.year ? `<span class="chip">${escapeHtml(m.year)}</span>` : '',
+      isSeries ? 'Series' : escapeHtml(fmtSize(m.size)),
+    ].filter(Boolean).join(' ');
     const [h1, h2] = hueFor(m.title);
     el.innerHTML = `
       <div class="poster-wrap" style="--h1:${h1};--h2:${h2}">
         <div class="poster-fallback"><span>${escapeHtml(m.title.slice(0, 1).toUpperCase())}</span></div>
-        <img class="poster" loading="lazy" src="/api/thumbnail/${m.id}" alt=""
+        <img class="poster" loading="lazy" src="/api/thumbnail/${m.posterId}" alt=""
              onload="this.classList.add('loaded')" />
         <div class="poster-overlay">
-          <div class="play-badge"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></div>
+          <div class="play-badge">${isSeries
+            ? '<svg viewBox="0 0 24 24"><path d="M4 6h16v10H4zM2 18h20v2H2z"/></svg>'
+            : '<svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>'}</div>
         </div>
-        ${dur ? `<span class="badge-dur">${escapeHtml(dur)}</span>` : ''}
+        ${badge}
         <button class="kebab" title="Opsi thumbnail" aria-label="Opsi">
           <svg viewBox="0 0 24 24"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>
         </button>
@@ -223,10 +231,38 @@ function renderMovies(movies) {
       await resetPosterFor(m, el);
     });
 
-    el.addEventListener('click', () => play(m));
+    el.addEventListener('click', () => isSeries ? openSeries(m, el) : play(m));
     grid.appendChild(el);
   }
 }
+
+// ---------- Series modal ----------
+function openSeries(series, cardEl) {
+  $('#series-title').textContent = series.title + (series.year ? ` (${series.year})` : '');
+  $('#series-meta').textContent = `${series.episodeCount} episode · ${fmtSize(series.size)}`;
+  const poster = $('#series-poster');
+  poster.src = cardEl.querySelector('.poster').src; // reuse (termasuk cache-bust bila diedit)
+  const list = $('#episode-list');
+  list.innerHTML = '';
+  series.episodes.forEach((ep, i) => {
+    const li = document.createElement('li');
+    const dur = fmtDuration(ep.duration);
+    li.innerHTML = `
+      <span class="ep-num">${i + 1}</span>
+      <span class="ep-title">${escapeHtml(ep.title)}</span>
+      <span class="ep-meta">${[dur, fmtSize(ep.size)].filter(Boolean).join(' · ')}</span>
+      <span class="ep-play">▶</span>`;
+    li.addEventListener('click', () =>
+      play({ id: ep.id, title: `${series.title} — ${ep.title}` }));
+    list.appendChild(li);
+  });
+  $('#series-modal').classList.remove('hidden');
+}
+function closeSeries() { $('#series-modal').classList.add('hidden'); }
+$('#series-close').addEventListener('click', closeSeries);
+$('#series-modal').addEventListener('click', (e) => {
+  if (e.target.id === 'series-modal') closeSeries();
+});
 
 $('#search').addEventListener('input', applyView);
 
@@ -264,7 +300,7 @@ posterInput.addEventListener('change', async () => {
   pendingUpload = null;
   if (!file.type.startsWith('image/')) { toast('⚠️ File harus berupa gambar', 'error'); return; }
   try {
-    const res = await fetch(`/api/thumbnail/${movie.id}/upload`, {
+    const res = await fetch(`/api/thumbnail/${movie.posterId}/upload`, {
       method: 'POST',
       headers: { 'Content-Type': file.type },
       body: file,
@@ -280,7 +316,7 @@ posterInput.addEventListener('change', async () => {
 
 async function resetPosterFor(movie, el) {
   try {
-    await api(`/api/thumbnail/${movie.id}/custom`, { method: 'DELETE' });
+    await api(`/api/thumbnail/${movie.posterId}/custom`, { method: 'DELETE' });
     refreshPoster(el);
     toast('↩️ Kembali ke poster otomatis', 'info');
   } catch (e) {

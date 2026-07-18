@@ -44,6 +44,9 @@ const TAG_RE = /\b(1080p|720p|2160p|480p|4k|x264|x265|h264|h265|hevc|bluray|blu-
 
 export function cleanTitle(filename) {
   let name = filename.replace(/\.[^.]+$/, '');
+  // Buang prefix situs (mis. "Lk21.De-", "D21.FUN-") & ID numerik panjang di akhir
+  name = name.replace(/^[A-Za-z0-9]+\.[A-Za-z0-9]+-/, '');
+  name = name.replace(/-\d{8,}$/, '');
   name = name.replace(/[._]/g, ' ');
   const yearMatch = name.match(/\b(19|20)\d{2}\b/);
   const year = yearMatch ? yearMatch[0] : null;
@@ -78,6 +81,9 @@ async function walk(dir, root, out, depth = 0) {
   }
 }
 
+// Kembalikan daftar item: film satuan atau series (kumpulan episode).
+// Aturan: file langsung di root library = film. File di subfolder =
+// dikelompokkan per folder; >1 file jadi series, 1 file jadi film.
 export async function scanMovies() {
   const libs = await getLibraries();
   const files = [];
@@ -85,24 +91,100 @@ export async function scanMovies() {
     await walk(lib, lib, files);
   }
   const meta = await loadMetaCache();
-  const movies = [];
+
+  const singles = [];           // { full, root } langsung di root library
+  const groups = new Map();     // parentDir -> { root, parent, files: [] }
   for (const { full, root } of files) {
+    const parent = path.dirname(full);
+    if (parent === root) {
+      singles.push({ full, root });
+    } else {
+      if (!groups.has(parent)) groups.set(parent, { root, parent, files: [] });
+      groups.get(parent).files.push(full);
+    }
+  }
+
+  const items = [];
+  for (const { full, root } of singles) {
+    items.push(await buildMovie(full, root, meta));
+  }
+  for (const { root, parent, files: gfiles } of groups.values()) {
+    if (gfiles.length === 1) {
+      items.push(await buildMovie(gfiles[0], root, meta));
+    } else {
+      items.push(await buildSeries(parent, root, gfiles, meta));
+    }
+  }
+
+  items.sort((a, b) => a.title.localeCompare(b.title));
+  return items;
+}
+
+async function buildMovie(full, root, meta) {
+  let stat;
+  try { stat = await fs.stat(full); } catch { stat = { size: 0, mtimeMs: 0 }; }
+  const { title, year } = cleanTitle(path.basename(full));
+  return {
+    type: 'movie',
+    id: encodeId(full),
+    posterId: encodeId(full),
+    title,
+    year,
+    library: path.basename(root),
+    size: stat.size,
+    duration: meta[cacheKey(full, stat)]?.duration ?? null,
+  };
+}
+
+async function buildSeries(folder, root, gfiles, meta) {
+  const episodes = [];
+  let totalSize = 0;
+  for (const full of gfiles) {
     let stat;
-    try { stat = await fs.stat(full); } catch { continue; }
-    const { title, year } = cleanTitle(path.basename(full));
-    movies.push({
+    try { stat = await fs.stat(full); } catch { stat = { size: 0, mtimeMs: 0 }; }
+    totalSize += stat.size;
+    const ep = parseEpisode(path.basename(full));
+    episodes.push({
       id: encodeId(full),
-      title,
-      year,
-      filename: path.basename(full),
-      library: path.basename(root),
-      relPath: path.relative(root, full),
+      title: ep.label,
+      season: ep.season,
+      episode: ep.episode,
       size: stat.size,
       duration: meta[cacheKey(full, stat)]?.duration ?? null,
     });
   }
-  movies.sort((a, b) => a.title.localeCompare(b.title));
-  return movies;
+  episodes.sort((a, b) =>
+    (a.season - b.season) || (a.episode - b.episode) || a.title.localeCompare(b.title));
+  const { title, year } = cleanTitle(path.basename(folder));
+  return {
+    type: 'series',
+    id: encodeId(folder),
+    posterId: episodes[0].id,   // poster ambil dari episode pertama
+    title,
+    year,
+    library: path.basename(root),
+    episodeCount: episodes.length,
+    size: totalSize,
+    duration: null,
+    episodes,
+  };
+}
+
+// Ekstrak season/episode dari nama file untuk urutan & label.
+function pad(n) { return String(n).padStart(2, '0'); }
+function parseEpisode(filename) {
+  const name = filename.replace(/\.[^.]+$/, '');
+  let m = name.match(/S(\d{1,2})\s*[.\-_ ]?E(\d{1,3})/i);
+  if (m) {
+    const s = +m[1], e = +m[2];
+    return { season: s, episode: e, label: `S${pad(s)}E${pad(e)}` };
+  }
+  m = name.match(/\b(?:episode|ep|e)\s*[-_ ]?(\d{1,3})\b/i);
+  if (m) {
+    return { season: 1, episode: +m[1], label: `Episode ${pad(+m[1])}` };
+  }
+  m = name.match(/(\d{1,3})(?!.*\d)/); // angka terakhir sebagai fallback
+  return { season: 1, episode: m ? +m[1] : 0, label: name };
 }
 
 // ---------- Metadata cache (durasi) ----------
@@ -238,9 +320,18 @@ export async function getThumbnail(videoFile) {
   try { await fs.access(outFile); return { file: outFile, generated: true }; } catch { /* generate */ }
 
   const duration = await getDuration(videoFile);
-  const seek = duration ? Math.min(duration * 0.2, duration - 1) : 30;
-  const ok = await generateThumb(videoFile, outFile, Math.max(1, seek));
-  if (ok) return { file: outFile, generated: true };
+  // seek ~20% durasi, tapi jangan pernah melewati akhir video (aman utk klip pendek)
+  const seek = duration && duration > 0
+    ? Math.min(duration * 0.2, Math.max(duration - 0.5, 0))
+    : 3;
+  const ok = await generateThumb(videoFile, outFile, seek);
+  // Pastikan file benar-benar terbuat & tidak kosong sebelum dipakai
+  if (ok) {
+    try {
+      if ((await fs.stat(outFile)).size > 0) return { file: outFile, generated: true };
+    } catch { /* file tak terbuat */ }
+  }
+  await fs.rm(outFile, { force: true }).catch(() => {});
   return null;
 }
 
