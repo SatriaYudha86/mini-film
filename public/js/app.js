@@ -217,8 +217,7 @@ function renderMovies(items) {
     el.innerHTML = `
       <div class="poster-wrap" style="--h1:${h1};--h2:${h2}">
         <div class="poster-fallback"><span>${escapeHtml(m.title.slice(0, 1).toUpperCase())}</span></div>
-        <img class="poster" loading="lazy" src="/api/thumbnail/${m.posterId}" alt=""
-             onload="this.classList.add('loaded')" />
+        <img class="poster" loading="lazy" src="/api/thumbnail/${m.posterId}" alt="" />
         <div class="poster-overlay">
           <div class="play-badge">${
             isSeries
@@ -239,6 +238,17 @@ function renderMovies(items) {
         <div class="title">${escapeHtml(m.title)}</div>
         <div class="sub">${subParts}</div>
       </div>`;
+
+    // Reveal the poster once it has loaded. Attached here (not as an inline
+    // onload=) so it works under a strict Content-Security-Policy.
+    const posterImg = el.querySelector(".poster");
+    if (posterImg) {
+      if (posterImg.complete && posterImg.naturalWidth > 0) {
+        posterImg.classList.add("loaded");
+      } else {
+        posterImg.addEventListener("load", () => posterImg.classList.add("loaded"));
+      }
+    }
 
     const kebab = el.querySelector(".kebab");
     const menu = el.querySelector(".card-menu");
