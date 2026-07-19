@@ -9,6 +9,39 @@ const POSTER_NAMES = ['poster', 'folder', 'cover', 'movie'];
 const IMG_EXT = ['.jpg', '.jpeg', '.png', '.webp'];
 const SKIP_DIRS = new Set(['node_modules', '.git', '@eaDir', '.thumbnails']);
 
+// ---------- ffmpeg/ffprobe concurrency limit ----------
+// Each thumbnail/duration request can spawn ffmpeg. Without a cap a client can
+// fire many requests at once and exhaust the CPU (DoS). Cap the number of
+// concurrent processes; extra work waits in a queue.
+const MAX_FFMPEG = Number(process.env.FFMPEG_CONCURRENCY) || 2;
+let activeFf = 0;
+const ffQueue = [];
+function acquireFf() {
+  if (activeFf < MAX_FFMPEG) { activeFf += 1; return Promise.resolve(); }
+  return new Promise((resolve) => ffQueue.push(resolve));
+}
+function releaseFf() {
+  const next = ffQueue.shift();
+  if (next) next();        // hand the slot straight to the next waiter
+  else activeFf -= 1;      // no waiters: free the slot
+}
+async function withFf(fn) {
+  await acquireFf();
+  try { return await fn(); } finally { releaseFf(); }
+}
+
+// Reject uploads whose bytes are not a real JPEG/PNG/WEBP/GIF image, so we never
+// hand arbitrary attacker-controlled files to ffmpeg or store them as ".jpg".
+export function isSupportedImage(buf) {
+  if (!buf || buf.length < 12) return false;
+  if (buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return true;            // JPEG
+  if (buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47) return true; // PNG
+  if (buf[0] === 0x47 && buf[1] === 0x49 && buf[2] === 0x46) return true;           // GIF
+  if (buf.slice(0, 4).toString('ascii') === 'RIFF' &&
+      buf.slice(8, 12).toString('ascii') === 'WEBP') return true;                   // WEBP
+  return false;
+}
+
 // ---------- Path security ----------
 // id = base64url of the absolute path. Always re-validated against the libraries.
 export function encodeId(absPath) {
@@ -20,6 +53,19 @@ export function decodeId(id) {
   } catch {
     return null;
   }
+}
+
+// True when `abs` equals or is nested under one of the given root dirs.
+// Used to keep the folder browser and library manager inside allowed roots.
+export async function isInsideRoots(abs, roots) {
+  let real;
+  try { real = await fs.realpath(abs); } catch { real = path.resolve(abs); }
+  for (const root of roots) {
+    let rreal;
+    try { rreal = await fs.realpath(root); } catch { rreal = path.resolve(root); }
+    if (real === rreal || real.startsWith(rreal + path.sep)) return true;
+  }
+  return false;
 }
 
 // Ensure the target sits inside one of the library roots (prevents path traversal).
@@ -208,7 +254,7 @@ async function saveMetaCache() {
 }
 
 function ffprobeDuration(file) {
-  return new Promise((resolve) => {
+  return withFf(() => new Promise((resolve) => {
     const p = spawn('ffprobe', [
       '-v', 'error', '-show_entries', 'format=duration',
       '-of', 'default=noprint_wrappers=1:nokey=1', file,
@@ -220,7 +266,7 @@ function ffprobeDuration(file) {
       resolve(Number.isFinite(val) ? val : null);
     });
     p.on('error', () => resolve(null));
-  });
+  }));
 }
 
 export async function getDuration(file) {
@@ -266,7 +312,7 @@ async function findLocalPoster(videoFile) {
 }
 
 function generateThumb(videoFile, outFile, seek) {
-  return new Promise((resolve) => {
+  return withFf(() => new Promise((resolve) => {
     const p = spawn('ffmpeg', [
       '-ss', String(seek), '-i', videoFile,
       '-frames:v', '1', '-vf', 'scale=400:-1',
@@ -274,7 +320,7 @@ function generateThumb(videoFile, outFile, seek) {
     ]);
     p.on('close', (code) => resolve(code === 0));
     p.on('error', () => resolve(false));
-  });
+  }));
 }
 
 // User-uploaded custom poster (always .jpg, keyed by the video path).
@@ -288,11 +334,11 @@ export async function saveCustomPoster(videoFile, buffer) {
   const out = customPosterFile(videoFile);
   const tmp = out + '.tmp';
   await fs.writeFile(tmp, buffer);
-  const ok = await new Promise((resolve) => {
+  const ok = await withFf(() => new Promise((resolve) => {
     const p = spawn('ffmpeg', ['-i', tmp, '-vf', 'scale=600:-1', '-q:v', '3', '-y', out]);
     p.on('close', (code) => resolve(code === 0));
     p.on('error', () => resolve(false));
-  });
+  }));
   if (!ok) {
     // Fallback: store the raw bytes if ffmpeg fails (e.g. already a jpg).
     await fs.copyFile(tmp, out).catch(() => {});

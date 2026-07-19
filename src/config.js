@@ -1,5 +1,6 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -56,4 +57,17 @@ export async function saveConfig(next) {
 export async function getLibraries() {
   const cfg = await loadConfig();
   return cfg.libraries;
+}
+
+// Roots that the folder browser and library manager are allowed to touch.
+// This is the guard that stops someone adding e.g. "/etc" as a library and
+// reading arbitrary files. Override with MINISTREAM_ROOTS (a list of absolute
+// paths separated by the OS path delimiter, ":" on Linux). Defaults to the
+// current user's home directory.
+export function allowedRoots() {
+  const raw = process.env.MINISTREAM_ROOTS;
+  const list = raw
+    ? raw.split(path.delimiter).map((p) => p.trim()).filter(Boolean)
+    : [os.homedir()];
+  return list.map((p) => path.resolve(p));
 }

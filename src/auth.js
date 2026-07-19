@@ -135,13 +135,19 @@ export function getSessionToken(req) {
   return cookies.sid;
 }
 
+// Add the Secure attribute when served over HTTPS (e.g. behind a TLS reverse
+// proxy). Enable with SECURE_COOKIES=1 — do NOT set it for plain-HTTP access or
+// the browser will refuse to send the cookie and logins will appear to fail.
+const SECURE_COOKIES = process.env.SECURE_COOKIES === '1';
+const secureAttr = SECURE_COOKIES ? ' Secure;' : '';
+
 export function setSessionCookie(res, token) {
   res.setHeader('Set-Cookie',
-    `sid=${token}; HttpOnly; Path=/; SameSite=Lax; Max-Age=${Math.floor(SESSION_TTL / 1000)}`);
+    `sid=${token}; HttpOnly;${secureAttr} Path=/; SameSite=Lax; Max-Age=${Math.floor(SESSION_TTL / 1000)}`);
 }
 
 export function clearSessionCookie(res) {
-  res.setHeader('Set-Cookie', 'sid=; HttpOnly; Path=/; SameSite=Lax; Max-Age=0');
+  res.setHeader('Set-Cookie', `sid=; HttpOnly;${secureAttr} Path=/; SameSite=Lax; Max-Age=0`);
 }
 
 // Middleware
